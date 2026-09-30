@@ -153,6 +153,7 @@
         # `.checked` set; its source is the flake's own tree).
         codec-src = fstar-codec;
         codec-checked = fstar-codec.packages.${system}.checked;
+        codec-ocaml = fstar-codec.packages.${system}.ocaml;
 
         _pkg = import ./default.nix {
           inherit
@@ -163,6 +164,7 @@
             stdenv
             codec-src
             codec-checked
+            codec-ocaml
             ;
           dotnet = dotnet-sdk_10;
         };

@@ -32,6 +32,7 @@
   dotnet,
   codec-src,
   codec-checked,
+  codec-ocaml,
 }:
 
 let
@@ -169,7 +170,7 @@ DUNE_PROJECT
  (name ${ocaml-lib-name})
  (public_name ${pname}-ocaml)
  (modules ${builtins.concatStringsSep " " ocaml-modules} Custard)
- (libraries fstar.lib))
+ (libraries fstar.lib codec-ocaml))
 DUNE
     '';
     installPhase = "true";
@@ -180,7 +181,7 @@ DUNE
     version = "0.1.0";
     src = ocaml-src;
     inherit meta;
-    propagatedBuildInputs = [ fstar ];
+    propagatedBuildInputs = [ fstar codec-ocaml ];
     buildInputs = with ocamlPackages; [
       batteries
       pprint
