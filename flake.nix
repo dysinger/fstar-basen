@@ -13,10 +13,10 @@
       url = "github:dysinger/fstar/v2026.09.20+lsp";
       flake = false;
     };
-    # The codec dependency.  Local git sibling while we bootstrap (pinned to
-    # fstar-codec's HEAD commit in flake.lock); switch to the published
-    # `github:dysinger/fstar-codec` input once fstar-basen ships.
-    fstar-codec.url = "git+file:///Users/user/_/fstar-codec";
+    # The codec dependency (Data.Codec.Types).  Consumed from the published
+    # `dysinger/fstar-codec` GitHub repo (pinned to its HEAD commit in
+    # flake.lock).
+    fstar-codec.url = "github:dysinger/fstar-codec";
     # No karamel input.  karamel is an in-tree SUBMODULE of F* that upstream's
     # .nix/fstar.nix synthesizes (cp -r karamel-src) only to run `make -C
     # karamel install`, which installs the `krml` binary + headers.  We do not

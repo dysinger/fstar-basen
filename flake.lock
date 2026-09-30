@@ -63,15 +63,15 @@
       "locked": {
         "lastModified": 1790620132,
         "narHash": "sha256-fGWw6et5b+SL2L2yaLbHyrvay1RY0nxfO/2MnuPqvAg=",
-        "ref": "refs/heads/master",
+        "owner": "dysinger",
+        "repo": "fstar-codec",
         "rev": "1c3e79b90094748c9efad1d702f9a7e5d6c5f532",
-        "revCount": 30,
-        "type": "git",
-        "url": "file:///Users/user/_/fstar-codec"
+        "type": "github"
       },
       "original": {
-        "type": "git",
-        "url": "file:///Users/user/_/fstar-codec"
+        "owner": "dysinger",
+        "repo": "fstar-codec",
+        "type": "github"
       }
     },
     "fstar_2": {
