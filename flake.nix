@@ -110,9 +110,9 @@
 
       in
       {
-        packages.basen-checked = _pkg.basen-checked;
-        packages.basen-krml = _pkg.basen-krml;
-        packages.default = _pkg.basen-checked;
+        packages.default = _pkg.native;
+        packages.checked = _pkg.checked;
+        packages.native = _pkg.native;
 
         devShells.default = pkgs.mkShell {
           dontDetectOcamlConflicts = true;

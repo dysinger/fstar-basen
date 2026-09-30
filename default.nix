@@ -3,7 +3,13 @@
 # Takes pkgs with fstar, karamel, fstar-checked in scope (from the flake
 # overlay), plus the vendored codec dependency's checked set + source path.
 #
-# Returns { basen-checked; basen-krml }.
+# Returns { checked; native }.
+#
+# Target names match fstar-codec / fstar-nix-flake-template master:
+#   - `checked` — F* verification gate (0-admit)
+#   - `native`  — C extraction (KaRaMeL `.krml`; the Custard-era analogue of
+#                 `--custard_backend C`)
+# The `ocaml`/`fsharp` targets are NOT ported yet (deferred; see AGENTS.md).
 
 { pkgs, codec-checked, codec-src }:
 
@@ -26,7 +32,7 @@ let
     "Data.BaseN.Low"
   ];
 
-  basen-checked = stdenv.mkDerivation {
+  checked = stdenv.mkDerivation {
     pname = "basen-checked";
     version = "0.1.0";
     src = ./.;
@@ -53,14 +59,14 @@ let
     installPhase = "true";
   };
 
-  basen-krml = stdenv.mkDerivation {
-    pname = "basen-krml";
+  native = stdenv.mkDerivation {
+    pname = "basen-native";
     version = "0.1.0";
     src = ./.;
     nativeBuildInputs = [ fstar ];
     buildPhase = ''
       mkdir -p $out
-      cp ${basen-checked}/*.checked $out/ 2>/dev/null || true
+      cp ${checked}/*.checked $out/ 2>/dev/null || true
       cp ${codec-checked}/*.checked $out/ 2>/dev/null || true
       cp ${fstar-checked}/*.checked $out/ 2>/dev/null || true
 
@@ -79,5 +85,5 @@ let
   };
 in
 {
-  inherit basen-checked basen-krml;
+  inherit checked native;
 }
