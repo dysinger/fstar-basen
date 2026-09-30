@@ -24,7 +24,6 @@ module Data.BaseN.Base64
 open Data.Codec.Types
 open FStar.UInt8
 open FStar.List.Tot
-open FStar.Mul
 open FStar.Math.Lemmas
 
 module U8 = FStar.UInt8
@@ -153,7 +152,7 @@ let rec decode_base64 (bs: list byte) : Tot (option (list byte)) (decreases (L.l
   match bs with
   | [] -> Some []
   | c0 :: c1 :: c2 :: c3 :: rest ->
-    let pad_count = (if is_pad c3 then 1 else 0) + (if is_pad c2 then 1 else 0) in
+    let pad_count : int = (if is_pad c3 then 1 else 0) + (if is_pad c2 then 1 else 0) in
     if is_pad c0 || is_pad c1 then None
     else if not (is_base64_char c0 && is_base64_char c1) then None
     else

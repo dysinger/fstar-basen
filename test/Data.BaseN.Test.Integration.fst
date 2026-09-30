@@ -8,14 +8,14 @@ Uses [--admit_smt_queries true] for integration anchoring only.
 Individual lemmas are proven without admits in their source modules.
 
 Section ordering matches the include order in Data.BaseN.fst:
-  Base08 → Base16 → Base32 → Base64 → Low*
+  Base08 → Base16 → Base32 → Base64 → Pulse
 
 @header Data.BaseN.Test.Integration
 *)
 module Data.BaseN.Test.Integration
 
 open Data.BaseN
-open Data.BaseN.Low
+open Data.BaseN.Pulse
 
 #push-options "--admit_smt_queries true"
 
@@ -126,17 +126,17 @@ let _lemma_base64_decode_pad_first = lemma_base64_decode_pad_first
 let _lemma_base64_decode_bad_length = lemma_base64_decode_bad_length
 let _lemma_base64_roundtrip_concrete = lemma_base64_roundtrip_concrete
 
-(** Low* lemmas *)
+(** Pulse lemmas *)
 
 let _lemma_hex_digit_eq_nibble = lemma_hex_digit_eq_nibble
-let _lemma_low_hex_roundtrip = lemma_hex_roundtrip
+let _lemma_pulse_hex_roundtrip = lemma_hex_roundtrip
 let _lemma_b64_val_i_eq_b64_val = lemma_b64_val_i_eq_b64_val
-let _lemma_low_base16_roundtrip = lemma_low_base16_roundtrip
-let _lemma_low_base64_triple_roundtrip = lemma_low_base64_triple_roundtrip
-let _lemma_low_base64_tail1_roundtrip = lemma_low_base64_tail1_roundtrip
-let _lemma_low_base64_tail2_roundtrip = lemma_low_base64_tail2_roundtrip
+let _lemma_pulse_base16_roundtrip = lemma_pulse_base16_roundtrip
+let _lemma_pulse_base64_triple_roundtrip = lemma_pulse_base64_triple_roundtrip
+let _lemma_pulse_base64_tail1_roundtrip = lemma_pulse_base64_tail1_roundtrip
+let _lemma_pulse_base64_tail2_roundtrip = lemma_pulse_base64_tail2_roundtrip
 
-(** Low* encode/decode functions — mechanically protected against deletion *)
+(** Pulse encode/decode functions — mechanically protected against deletion *)
 
 let _encode_base16 = encode_base16
 let _decode_base16 = decode_base16

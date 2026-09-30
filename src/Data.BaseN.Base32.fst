@@ -25,7 +25,6 @@ module Data.BaseN.Base32
 open Data.Codec.Types
 open FStar.UInt8
 open FStar.List.Tot
-open FStar.Mul
 open FStar.Math.Lemmas
 
 module U8 = FStar.UInt8
@@ -202,7 +201,7 @@ let decode_base32_group (group: list byte) : option (list byte) =
     if is_pad c0 || is_pad c1 then None
     else if not (is_base32_char c0 && is_base32_char c1) then None
     else
-    let pad_count =
+    let pad_count : int =
         (if is_pad c7 then 1 else 0) + (if is_pad c6 then 1 else 0) +
         (if is_pad c5 then 1 else 0) + (if is_pad c4 then 1 else 0) +
         (if is_pad c3 then 1 else 0) + (if is_pad c2 then 1 else 0) in

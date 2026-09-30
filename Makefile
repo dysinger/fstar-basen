@@ -1,74 +1,96 @@
 # Copyright 2026 Department of Code LLC.
 # SPDX-License-Identifier: AGPL-3.0-or-later
 
-# fstar-basen — dev-loop build (F* verify + KaRaMeL extract).
-# Usage: nix develop, then `make check` / `make krml`.
+# F* dev-loop build (verify).
+#
+# Usage: nix develop, then `make check`.
+#
+# FSTAR_CHECKED / CODEC_SRC / CODEC_CHECKED are exported by the flake devShell
+# (see flake.nix shellHook).  Override them here if needed.
+
+# ── Tools ──────────────────────────────────────────────────────────
+
+# Build output directory.  Defaults to `./out` for the dev loop; nix
+# derivations (default.nix) override it to `$out` so the Makefile writes
+# straight into the nix store output path.
+OUT ?= out
 
 FSTAR ?= fstar.exe
-KRML  ?= krml
 
-ULIB        ?= $(shell $(FSTAR) --locate_lib 2>/dev/null || echo /none)/ulib
-KRM_LIB_DIR ?= $(or $(KRML_HOME)/krmllib,$(KRM_LIB))
+# The codec dependency's source dir + pre-verified `.checked` cache (injected
+# by the flake/derivation as absolute paths; `codec` lives in the separate
+# `fstar-codec` repo).
+CODEC_SRC ?= $(error CODEC_SRC is not set; run \`nix develop\` (or export it yourself) before \`make check\`)
+CODEC_CHECKED ?= $(error CODEC_CHECKED is not set; run \`nix develop\` (or export it yourself) before \`make check\`)
 
-# The codec dependency (Data.Codec.Types) is vendored in-repo as ./codec.
-CODEC_SRC ?= ./codec
+FLIB := $(shell $(FSTAR) --locate_lib 2>/dev/null || echo /none)
+ULIB := $(FLIB)/ulib
+
+# Pulse ships in the install under $(locate_lib)/pulse (sources under
+# pulse/{common,pulse/lib}, `.checked` under pulse/{common.checked,
+# pulse.checked}).  Data.BaseN.Pulse (in Pulse) needs these, since FSTAR_FLAGS
+# uses --no_default_includes.
+PULSE_DIRS := $(FLIB)/pulse/common\
+  $(FLIB)/pulse/common.checked\
+  $(FLIB)/pulse/pulse/lib\
+  $(FLIB)/pulse/pulse.checked
 
 FSTAR_FLAGS = --no_default_includes \
   --include $(ULIB) \
-  --include ./src \
+  $(foreach d,$(PULSE_DIRS),--include $(d)) \
   --include $(CODEC_SRC)/src \
-  --include $(KRM_LIB_DIR) \
-  --include $(KRM_LIB_DIR)/obj
+  --include ./src
+
+# ── F* verification ───────────────────────────────────────────────
 
 # Source modules in DEPENDENCY ORDER (leaf modules first).
+#
+# Data.BaseN.Pulse is the Custard-era Pulse leaf (the old KaRaMeL
+# Data.BaseN.Low was deleted with the Low* stdlib in v2026.09.20).
 SRC_MODS := Data.BaseN.Base08 Data.BaseN.Base16 Data.BaseN.Base32 \
-            Data.BaseN.Base64 Data.BaseN Data.BaseN.Low
+            Data.BaseN.Base64 Data.BaseN Data.BaseN.Pulse
+
+# Pulse-only modules skip re-verification (they ship pre-verified in the F*
+# install); Data.BaseN.Pulse opens Pulse.Lib.* which would otherwise time out
+# re-verifying the whole Pulse stdlib on every `make check`.
+ALREADY_CACHED := Prims,FStar,Pulse.Nolib,Pulse.Lib,Pulse.Class,PulseCore
+
 TST_MODS := Data.BaseN.Test.Integration
 
-# Only Low* modules extracted to C (src/ only).
-KRML_MODS := Data.BaseN.Low
+.PHONY: check clean
 
-.PHONY: check krml clean
+check: $(addprefix $(OUT)/checked/,$(addsuffix .fst.checked,$(SRC_MODS))) \
+       $(addprefix $(OUT)/checked/,$(addsuffix .fst.checked,$(TST_MODS)))
 
-check: $(addprefix out/checked/,$(addsuffix .fst.checked,$(SRC_MODS))) \
-       $(addprefix out/checked/,$(addsuffix .fst.checked,$(TST_MODS)))
-
-out/checked/%.fst.checked: src/%.fst
-	@mkdir -p out/checked
+$(OUT)/checked/%.fst.checked: src/%.fst
+	@mkdir -p $(OUT)/checked
 	@test -n "$(FSTAR_CHECKED)" || { \
-	  echo "ERROR: FSTAR_CHECKED is not set; run \`nix develop\` first" >&2; \
+	  echo "ERROR: FSTAR_CHECKED is not set; run \`nix develop\` (or export it yourself) before \`make check\`" >&2; \
 	  exit 1; }
-	@cp $(FSTAR_CHECKED)/*.checked out/checked/ 2>/dev/null || true
+	@cp $(FSTAR_CHECKED)/*.checked $(OUT)/checked/ 2>/dev/null || true
+	@cp $(CODEC_CHECKED)/*.checked $(OUT)/checked/ 2>/dev/null || true
 	@echo "=== $* ==="
 	$(FSTAR) $(FSTAR_FLAGS) \
-	  --z3rlimit 80 \
-	  --cache_checked_modules --cache_dir out/checked \
-	  --odir out/checked $<
+	  --z3rlimit 120 \
+	  --already_cached $(ALREADY_CACHED) \
+	  --cache_checked_modules --cache_dir $(OUT)/checked \
+	  --odir $(OUT)/checked $<
 
-out/checked/%.fst.checked: test/%.fst
-	@mkdir -p out/checked
+$(OUT)/checked/%.fst.checked: test/%.fst
+	@mkdir -p $(OUT)/checked
 	@test -n "$(FSTAR_CHECKED)" || { \
 	  echo "ERROR: FSTAR_CHECKED is not set; run \`nix develop\` first" >&2; \
 	  exit 1; }
-	@cp $(FSTAR_CHECKED)/*.checked out/checked/ 2>/dev/null || true
+	@cp $(FSTAR_CHECKED)/*.checked $(OUT)/checked/ 2>/dev/null || true
+	@cp $(CODEC_CHECKED)/*.checked $(OUT)/checked/ 2>/dev/null || true
 	@echo "=== $* ==="
 	$(FSTAR) $(FSTAR_FLAGS) --include ./test \
-	  --z3rlimit 80 \
-	  --cache_checked_modules --cache_dir out/checked \
-	  --odir out/checked $<
+	  --z3rlimit 120 \
+	  --already_cached $(ALREADY_CACHED) \
+	  --cache_checked_modules --cache_dir $(OUT)/checked \
+	  --odir $(OUT)/checked $<
 
-krml: check $(addprefix out/krml/,$(addsuffix .krml,$(subst .,_,$(KRML_MODS))))
-
-# Per-module krml extraction — dots in source, underscores in output.
-define KRML_RULE
-out/krml/$(subst .,_,$(1)).krml: src/$(1).fst
-	@mkdir -p out/krml
-	$(FSTAR) $(FSTAR_FLAGS) \
-	  --cache_checked_modules --cache_dir out/checked \
-	  --odir out/krml --codegen krml \
-	  --extract_module $(1) $$<
-endef
-$(foreach mod,$(KRML_MODS),$(eval $(call KRML_RULE,$(mod))))
+# ── Clean ─────────────────────────────────────────────────────────────
 
 clean:
-	rm -rf out
+	rm -rf $(OUT) cache result result-*

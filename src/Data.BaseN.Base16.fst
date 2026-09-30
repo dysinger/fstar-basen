@@ -18,7 +18,6 @@ module Data.BaseN.Base16
 
 open FStar.UInt8
 open FStar.List.Tot
-open FStar.Mul
 
 module U8 = FStar.UInt8
 module L = FStar.List.Tot
