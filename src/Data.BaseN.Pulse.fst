@@ -63,15 +63,20 @@ type opt_u32 =
   | OU_None
   | OU_Some of (v: U32.t{U32.v v < 64})
 
+(** Optional nibble (0..15) — the base16 `unhex` result. *)
+type opt_nibble =
+  | ON_None
+  | ON_Some of (v: U32.t{U32.v v < 16})
+
 (** Optional (byte, bytes-written) pair — the base16 decode result. *)
 type opt_result_u8 =
   | OR8_None
-  | OR8_Some of (b: U8.t & consumed: U32.t)
+  | OR8_Some of (U8.t & U32.t)
 
 (** Optional (bytes, bytes-written) pair — the base64 decode result. *)
 type opt_result_bytes =
   | ORB_None
-  | ORB_Some of (bytes: list U8.t & consumed: U32.t)
+  | ORB_Some of (list U8.t & U32.t)
 
 (* ── Pure helpers (erased: noextract so Custard skips them) ─────────── *)
 
@@ -85,12 +90,12 @@ let hex_digit (n: U32.t{U32.v n < 16}) : Tot U8.t =
   if v < 10 then U8.uint_to_t (48 + v) else U8.uint_to_t (55 + v)
 
 (** [unhex c] converts an ASCII hex char to its 0..15 value. *)
-let unhex (c: U8.t) : Tot opt_u32 =
+let unhex (c: U8.t) : Tot opt_nibble =
   let v = U8.v c in
-  if 48 <= v && v <= 57 then OU_Some (U32.uint_to_t (v - 48))
-  else if 65 <= v && v <= 70 then OU_Some (U32.uint_to_t (v - 55))
-  else if 97 <= v && v <= 102 then OU_Some (U32.uint_to_t (v - 87))
-  else OU_None
+  if 48 <= v && v <= 57 then ON_Some (U32.uint_to_t (v - 48))
+  else if 65 <= v && v <= 70 then ON_Some (U32.uint_to_t (v - 55))
+  else if 97 <= v && v <= 102 then ON_Some (U32.uint_to_t (v - 87))
+  else ON_None
 
 (** [b64_val_i i] converts 0..63 to base64 char. *)
 let b64_val_i (i: U32.t{U32.v i < 64}) : Tot U8.t =
@@ -113,6 +118,98 @@ let unbase64 (c: U8.t) : Tot opt_u32 =
 
 (** [is_pad_u8 c] is true when c is '=' (0x3D). *)
 let is_pad_u8 (c: U8.t) : bool = U8.v c = 0x3D
+
+(** [is_any_pad_u8 c0 c1] — true when either byte is the '=' pad. *)
+let is_any_pad_u8 (c0 c1: U8.t) : bool = is_pad_u8 c0 || is_pad_u8 c1
+
+(** [is_pad_pair c2 c3] — true when both c2 and c3 are '=' pads (pad_count = 2). *)
+let is_pad_pair (c2 c3: U8.t) : bool = is_pad_u8 c2 && is_pad_u8 c3
+
+(** [is_single_pad c2 c3] — true when exactly one of c2/c3 is '=' (pad_count = 1). *)
+let is_single_pad (c2 c3: U8.t) : bool =
+  (is_pad_u8 c2 && not (is_pad_u8 c3)) || (is_pad_u8 c3 && not (is_pad_u8 c2))
+
+(* ── Pure decode specs (noextract: mirror the `fn` bodies exactly) ─── *)
+
+(** [decode_base16_spec chars] — the pure spec for [decode_base16]. *)
+noextract
+let decode_base16_spec (chars: Seq.seq U8.t) : opt_result_u8 =
+  if Seq.length chars < 2 then OR8_None
+  else
+    let c0 = Seq.index chars 0 in
+    let c1 = Seq.index chars 1 in
+    match unhex c0, unhex c1 with
+    | ON_Some hi, ON_Some lo ->
+      OR8_Some (U8.uint_to_t (U32.v hi * 16 + U32.v lo), 2ul)
+    | _ -> OR8_None
+
+(** [decode_base64_quad_spec chars] — the pure spec for [decode_base64_quad]. *)
+noextract
+let decode_base64_quad_spec (chars: Seq.seq U8.t) : opt_result_bytes =
+  if Seq.length chars < 4 then ORB_None
+  else
+    let c0 = Seq.index chars 0 in
+    let c1 = Seq.index chars 1 in
+    let c2 = Seq.index chars 2 in
+    let c3 = Seq.index chars 3 in
+    if is_any_pad_u8 c0 c1 then ORB_None
+    else
+      match unbase64 c0, unbase64 c1 with
+      | OU_Some v0, OU_Some v1 ->
+        let b0 = U8.uint_to_t (U32.v v0 * 4 + U32.v v1 / 16) in
+        if is_pad_pair c2 c3 then ORB_Some ([b0], 4ul)
+        else if is_pad_u8 c2 then ORB_None
+        else
+          (match unbase64 c2 with
+           | OU_Some v2 ->
+             let b1 = U8.uint_to_t ((U32.v v1 % 16) * 16 + U32.v v2 / 4) in
+             if is_single_pad c2 c3 then ORB_Some ([b0; b1], 4ul)
+             else if is_pad_u8 c3 then ORB_None
+             else
+               (match unbase64 c3 with
+                | OU_Some v3 ->
+                  let b2 = U8.uint_to_t ((U32.v v2 % 4) * 64 + U32.v v3) in
+                  ORB_Some ([b0; b1; b2], 4ul)
+                | _ -> ORB_None)
+           | _ -> ORB_None)
+      | _ -> ORB_None
+
+(* ── Pure spec roundtrip lemmas (noextract) ─────────────────────── *)
+
+(** [lemma_decode_base16_spec_roundtrip b] — the spec decodes its own encoding. *)
+noextract
+let lemma_decode_base16_spec_roundtrip (b: U8.t) : Lemma
+  (decode_base16_spec (Seq.seq_of_list (B16.encode_base16 [b])) == OR8_Some (b, 2ul))
+  =
+  let bs = B16.encode_base16 [b] in
+  B16.lemma_encode_base16_single b;
+  assert (Seq.length (Seq.seq_of_list bs) >= 2);
+  let hi = Seq.index (Seq.seq_of_list bs) 0 in
+  let lo = Seq.index (Seq.seq_of_list bs) 1 in
+  assert (unhex hi == ON_Some (U32.uint_to_t (U8.v b / 16)));
+  assert (unhex lo == ON_Some (U32.uint_to_t (U8.v b % 16)))
+
+(** [lemma_decode_base64_spec_roundtrip_triple] — 3-byte spec roundtrip. *)
+noextract
+let lemma_decode_base64_spec_roundtrip_triple (b0 b1 b2: U8.t) : Lemma
+  (decode_base64_quad_spec (Seq.seq_of_list (B64.encode_base64 [b0; b1; b2]))
+   == ORB_Some ([b0; b1; b2], 4ul))
+  = B64.lemma_base64_triple b0 b1 b2
+
+(** [lemma_decode_base64_spec_roundtrip_tail1] — 1-byte spec roundtrip. *)
+noextract
+let lemma_decode_base64_spec_roundtrip_tail1 (b0: U8.t) : Lemma
+  (decode_base64_quad_spec (Seq.seq_of_list (B64.encode_base64 [b0]))
+   == ORB_Some ([b0], 4ul))
+  = B64.lemma_base64_single b0
+
+(** [lemma_decode_base64_spec_roundtrip_tail2] — 2-byte spec roundtrip. *)
+noextract
+let lemma_decode_base64_spec_roundtrip_tail2 (b0 b1: U8.t) : Lemma
+  (decode_base64_quad_spec (Seq.seq_of_list (B64.encode_base64 [b0; b1]))
+   == ORB_Some ([b0; b1], 4ul))
+  = B64.lemma_base64_pair b0 b1
+
 
 (** [lemma_hex_digit_eq_nibble] bridges [hex_digit] to pure
     [nibble_to_upper_hex]. *)
@@ -144,7 +241,7 @@ let lemma_b64_val_i_eq_b64_val (n: nat{n < 64}) : Lemma
     returns the original value. *)
 let lemma_hex_roundtrip (n: U32.t) : Lemma
   (requires U32.lt n 16ul)
-  (ensures unhex (hex_digit n) == OU_Some n)
+  (ensures unhex (hex_digit n) == ON_Some n)
   = let v = U32.v n in
     let hd = hex_digit n in
     let hd_v = U8.v hd in
@@ -184,14 +281,14 @@ fn encode_base16 (b: U8.t) (buf: A.array U8.t) (off: U32.t)
       pure (w == 2ul)
 {
   let v = U8.v b;
-  let hi = v / 16 in
-  let lo = v % 16 in
+  let hi = v / 16;
+  let lo = v % 16;
   lemma_hex_digit_eq_nibble hi;
   lemma_hex_digit_eq_nibble lo;
-  let hi_b = hex_digit (U32.uint_to_t hi) in
-  let lo_b = hex_digit (U32.uint_to_t lo) in
-  let j0 = US.uint32_to_sizet off in
-  let j1 = US.uint32_to_sizet (U32.add off 1ul) in
+  let hi_b = hex_digit (U32.uint_to_t hi);
+  let lo_b = hex_digit (U32.uint_to_t lo);
+  let j0 = US.uint32_to_sizet off;
+  let j1 = US.uint32_to_sizet (U32.add off 1ul);
   A.pts_to_len buf;
   buf.(j0) <- hi_b;
   buf.(j1) <- lo_b;
@@ -221,23 +318,25 @@ fn encode_base64_triple (b0 b1 b2: U8.t) (buf: A.array U8.t) (off: U32.t)
                 `Seq.equal` Seq.seq_of_list (B64.encode_base64 [b0; b1; b2]))) **
       pure (w == 4ul)
 {
-  let v0 = U8.v b0 in let v1 = U8.v b1 in let v2 = U8.v b2 in
-  let c0 = v0 / 4 in
-  let c1 = (v0 % 4) * 16 + v1 / 16 in
-  let c2 = (v1 % 16) * 4 + v2 / 64 in
-  let c3 = v2 % 64 in
+  let v0 = U8.v b0;
+  let v1 = U8.v b1;
+  let v2 = U8.v b2;
+  let c0 = v0 / 4;
+  let c1 = (v0 % 4) * 16 + v1 / 16;
+  let c2 = (v1 % 16) * 4 + v2 / 64;
+  let c3 = v2 % 64;
   lemma_b64_val_i_eq_b64_val c0;
   lemma_b64_val_i_eq_b64_val c1;
   lemma_b64_val_i_eq_b64_val c2;
   lemma_b64_val_i_eq_b64_val c3;
-  let b0' = b64_val_i (U32.uint_to_t c0) in
-  let b1' = b64_val_i (U32.uint_to_t c1) in
-  let b2' = b64_val_i (U32.uint_to_t c2) in
-  let b3' = b64_val_i (U32.uint_to_t c3) in
-  let j0 = US.uint32_to_sizet off in
-  let j1 = US.uint32_to_sizet (U32.add off 1ul) in
-  let j2 = US.uint32_to_sizet (U32.add off 2ul) in
-  let j3 = US.uint32_to_sizet (U32.add off 3ul) in
+  let b0' = b64_val_i (U32.uint_to_t c0);
+  let b1' = b64_val_i (U32.uint_to_t c1);
+  let b2' = b64_val_i (U32.uint_to_t c2);
+  let b3' = b64_val_i (U32.uint_to_t c3);
+  let j0 = US.uint32_to_sizet off;
+  let j1 = US.uint32_to_sizet (U32.add off 1ul);
+  let j2 = US.uint32_to_sizet (U32.add off 2ul);
+  let j3 = US.uint32_to_sizet (U32.add off 3ul);
   A.pts_to_len buf;
   buf.(j0) <- b0';
   buf.(j1) <- b1';
@@ -267,17 +366,17 @@ fn encode_base64_tail1 (b0: U8.t) (buf: A.array U8.t) (off: U32.t)
                 `Seq.equal` Seq.seq_of_list (B64.encode_base64 [b0]))) **
       pure (w == 4ul)
 {
-  let v0 = U8.v b0 in
-  let c0 = v0 / 4 in
-  let c1 = (v0 % 4) * 16 in
+  let v0 = U8.v b0;
+  let c0 = v0 / 4;
+  let c1 = (v0 % 4) * 16;
   lemma_b64_val_i_eq_b64_val c0;
   lemma_b64_val_i_eq_b64_val c1;
-  let b0' = b64_val_i (U32.uint_to_t c0) in
-  let b1' = b64_val_i (U32.uint_to_t c1) in
-  let j0 = US.uint32_to_sizet off in
-  let j1 = US.uint32_to_sizet (U32.add off 1ul) in
-  let j2 = US.uint32_to_sizet (U32.add off 2ul) in
-  let j3 = US.uint32_to_sizet (U32.add off 3ul) in
+  let b0' = b64_val_i (U32.uint_to_t c0);
+  let b1' = b64_val_i (U32.uint_to_t c1);
+  let j0 = US.uint32_to_sizet off;
+  let j1 = US.uint32_to_sizet (U32.add off 1ul);
+  let j2 = US.uint32_to_sizet (U32.add off 2ul);
+  let j3 = US.uint32_to_sizet (U32.add off 3ul);
   A.pts_to_len buf;
   buf.(j0) <- b0';
   buf.(j1) <- b1';
@@ -307,20 +406,21 @@ fn encode_base64_tail2 (b0 b1: U8.t) (buf: A.array U8.t) (off: U32.t)
                 `Seq.equal` Seq.seq_of_list (B64.encode_base64 [b0; b1]))) **
       pure (w == 4ul)
 {
-  let v0 = U8.v b0 in let v1 = U8.v b1 in
-  let c0 = v0 / 4 in
-  let c1 = (v0 % 4) * 16 + v1 / 16 in
-  let c2 = (v1 % 16) * 4 in
+  let v0 = U8.v b0;
+  let v1 = U8.v b1;
+  let c0 = v0 / 4;
+  let c1 = (v0 % 4) * 16 + v1 / 16;
+  let c2 = (v1 % 16) * 4;
   lemma_b64_val_i_eq_b64_val c0;
   lemma_b64_val_i_eq_b64_val c1;
   lemma_b64_val_i_eq_b64_val c2;
-  let b0' = b64_val_i (U32.uint_to_t c0) in
-  let b1' = b64_val_i (U32.uint_to_t c1) in
-  let b2' = b64_val_i (U32.uint_to_t c2) in
-  let j0 = US.uint32_to_sizet off in
-  let j1 = US.uint32_to_sizet (U32.add off 1ul) in
-  let j2 = US.uint32_to_sizet (U32.add off 2ul) in
-  let j3 = US.uint32_to_sizet (U32.add off 3ul) in
+  let b0' = b64_val_i (U32.uint_to_t c0);
+  let b1' = b64_val_i (U32.uint_to_t c1);
+  let b2' = b64_val_i (U32.uint_to_t c2);
+  let j0 = US.uint32_to_sizet off;
+  let j1 = US.uint32_to_sizet (U32.add off 1ul);
+  let j2 = US.uint32_to_sizet (U32.add off 2ul);
+  let j3 = US.uint32_to_sizet (U32.add off 3ul);
   A.pts_to_len buf;
   buf.(j0) <- b0';
   buf.(j1) <- b1';
@@ -349,23 +449,27 @@ fn decode_base16 (buf: A.array U8.t) (off: U32.t)
       pure (
         A.length buf == Seq.length s0 /\
         U32.v off + 2 <= A.length buf /\
-        (let c0 = Seq.index s0 (U32.v off) in
-         let c1 = Seq.index s0 (U32.v off + 1) in
-         match r, B16.decode_base16 [c0; c1] with
-         | OR8_Some (b, n), Some [b'] -> b == b' /\ U32.v n == 2
-         | OR8_None, None -> True
-         | _ -> False))
+        r == decode_base16_spec (Seq.slice s0 (U32.v off) (U32.v off + 2)))
 {
   A.pts_to_len buf;
-  let j0 = US.uint32_to_sizet off in
-  let j1 = US.uint32_to_sizet (U32.add off 1ul) in
-  let c0 = buf.(j0) in
-  let c1 = buf.(j1) in
-  match unhex c0, unhex c1 with
-  | OU_Some hi, OU_Some lo ->
-    let v = U32.add (U32.mul hi 16ul) lo in
-    OR8_Some (U8.uint_to_t (U32.v v), 2ul)
-  | _ -> OR8_None
+  let j0 = US.uint32_to_sizet off;
+  let j1 = US.uint32_to_sizet (U32.add off 1ul);
+  let c0 = buf.(j0);
+  let c1 = buf.(j1);
+  let r0 = unhex c0;
+  let r1 = unhex c1;
+  match r0 {
+    ON_None -> { OR8_None }
+    ON_Some hi -> {
+      match r1 {
+        ON_None -> { OR8_None }
+        ON_Some lo -> {
+          let v = U32.v hi * 16 + U32.v lo;
+          OR8_Some (U8.uint_to_t v, 2ul)
+        }
+      }
+    }
+  }
 }
 
 (** [decode_base64_quad] decodes 4 base64 chars → up to 3 bytes.
@@ -387,49 +491,61 @@ fn decode_base64_quad (buf: A.array U8.t) (off: U32.t)
       pure (
         A.length buf == Seq.length s0 /\
         U32.v off + 4 <= A.length buf /\
-        (let chars =
-           [Seq.index s0 (U32.v off);
-            Seq.index s0 (U32.v off + 1);
-            Seq.index s0 (U32.v off + 2);
-            Seq.index s0 (U32.v off + 3)] in
-         match r, B64.decode_base64 chars with
-         | ORB_Some (bytes, n), Some bs -> bytes == bs /\ U32.v n == 4
-         | ORB_None, None -> True
-         | _ -> False))
+        r == decode_base64_quad_spec (Seq.slice s0 (U32.v off) (U32.v off + 4)))
 {
   A.pts_to_len buf;
-  let j0 = US.uint32_to_sizet off in
-  let j1 = US.uint32_to_sizet (U32.add off 1ul) in
-  let j2 = US.uint32_to_sizet (U32.add off 2ul) in
-  let j3 = US.uint32_to_sizet (U32.add off 3ul) in
-  let c0 = buf.(j0) in
-  let c1 = buf.(j1) in
-  let c2 = buf.(j2) in
-  let c3 = buf.(j3) in
-  let pad_count = (if is_pad_u8 c3 then 1 else 0) + (if is_pad_u8 c2 then 1 else 0) in
-  if is_pad_u8 c0 || is_pad_u8 c1 then ORB_None
-  else
-    match unbase64 c0, unbase64 c1 with
-    | OU_Some v0, OU_Some v1 ->
-      let b0 = U8.uint_to_t (U32.v v0 * 4 + U32.v v1 / 16) in
-      if pad_count = 2 then
-        ORB_Some ([b0], 4ul)
-      else if is_pad_u8 c2 then ORB_None
-      else
-        (match unbase64 c2 with
-         | OU_Some v2 ->
-           let b1 = U8.uint_to_t ((U32.v v1 % 16) * 16 + U32.v v2 / 4) in
-           if pad_count = 1 then
-             ORB_Some ([b0; b1], 4ul)
-           else if is_pad_u8 c3 then ORB_None
-           else
-             (match unbase64 c3 with
-              | OU_Some v3 ->
-                let b2 = U8.uint_to_t ((U32.v v2 % 4) * 64 + U32.v v3) in
-                ORB_Some ([b0; b1; b2], 4ul)
-              | _ -> ORB_None)
-         | _ -> ORB_None)
-    | _ -> ORB_None
+  let j0 = US.uint32_to_sizet off;
+  let j1 = US.uint32_to_sizet (U32.add off 1ul);
+  let j2 = US.uint32_to_sizet (U32.add off 2ul);
+  let j3 = US.uint32_to_sizet (U32.add off 3ul);
+  let c0 = buf.(j0);
+  let c1 = buf.(j1);
+  let c2 = buf.(j2);
+  let c3 = buf.(j3);
+  if is_any_pad_u8 c0 c1 {
+    ORB_None
+  } else {
+    let r0 = unbase64 c0;
+    let r1 = unbase64 c1;
+    match r0 {
+      OU_None -> { ORB_None }
+      OU_Some v0 -> {
+        match r1 {
+          OU_None -> { ORB_None }
+          OU_Some v1 -> {
+            let b0 = U8.uint_to_t (U32.v v0 * 4 + U32.v v1 / 16);
+            if is_pad_pair c2 c3 {
+              ORB_Some ([b0], 4ul)
+            } else if is_pad_u8 c2 {
+              ORB_None
+            } else {
+              let r2 = unbase64 c2;
+              match r2 {
+                OU_None -> { ORB_None }
+                OU_Some v2 -> {
+                  let b1 = U8.uint_to_t ((U32.v v1 % 16) * 16 + U32.v v2 / 4);
+                  if is_single_pad c2 c3 {
+                    ORB_Some ([b0; b1], 4ul)
+                  } else if is_pad_u8 c3 {
+                    ORB_None
+                  } else {
+                    let r3 = unbase64 c3;
+                    match r3 {
+                      OU_None -> { ORB_None }
+                      OU_Some v3 -> {
+                        let b2 = U8.uint_to_t ((U32.v v2 % 4) * 64 + U32.v v3);
+                        ORB_Some ([b0; b1; b2], 4ul)
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
 }
 
 (* ── Value-preserving roundtrip lemmas ──────────────────────────────── *)
@@ -454,7 +570,7 @@ fn lemma_pulse_base16_roundtrip (b: U8.t) (buf: A.array U8.t) (off: U32.t)
 {
   let n = encode_base16 b buf off;
   let r = decode_base16 buf off;
-  B16.lemma_base16_single_byte b;
+  lemma_decode_base16_spec_roundtrip b;
   (n, r)
 }
 
@@ -478,7 +594,7 @@ fn lemma_pulse_base64_triple_roundtrip (b0 b1 b2: U8.t) (buf: A.array U8.t) (off
 {
   let n = encode_base64_triple b0 b1 b2 buf off;
   let r = decode_base64_quad buf off;
-  B64.lemma_base64_triple b0 b1 b2;
+  lemma_decode_base64_spec_roundtrip_triple b0 b1 b2;
   (n, r)
 }
 
@@ -502,7 +618,7 @@ fn lemma_pulse_base64_tail1_roundtrip (b0: U8.t) (buf: A.array U8.t) (off: U32.t
 {
   let n = encode_base64_tail1 b0 buf off;
   let r = decode_base64_quad buf off;
-  B64.lemma_base64_single b0;
+  lemma_decode_base64_spec_roundtrip_tail1 b0;
   (n, r)
 }
 
@@ -526,6 +642,6 @@ fn lemma_pulse_base64_tail2_roundtrip (b0 b1: U8.t) (buf: A.array U8.t) (off: U3
 {
   let n = encode_base64_tail2 b0 b1 buf off;
   let r = decode_base64_quad buf off;
-  B64.lemma_base64_pair b0 b1;
+  lemma_decode_base64_spec_roundtrip_tail2 b0 b1;
   (n, r)
 }
