@@ -1,7 +1,8 @@
+(* Copyright 2026 Department of Code LLC.
+   SPDX-License-Identifier: AGPL-3.0-or-later *)
+
 (**
 Data.BaseN.Base08 — Octal Byte Encoding (3 digits per byte)
-
-Copyright 2026 Department of Code LLC. All rights reserved.
 
 Built directly on UInt8 arithmetic with list induction.
 ZERO admits. ZERO --admit_smt_queries. 100% lemmas proven.

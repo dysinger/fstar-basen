@@ -7,6 +7,7 @@
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/c31cf09";
     flake-utils.url = "github:numtide/flake-utils";
+    treefmt-nix.url = "github:numtide/treefmt-nix";
     fstar = {
       # Fork of F* with the LSP server ported onto the v2026.09.20 base
       # (first stable tag shipping the Custard extractor).
@@ -29,6 +30,7 @@
       self,
       nixpkgs,
       flake-utils,
+      treefmt-nix,
       fstar-codec,
       ...
     }:
@@ -153,7 +155,6 @@
         # `.checked` set; its source is the flake's own tree).
         codec-src = fstar-codec;
         codec-checked = fstar-codec.packages.${system}.checked;
-        codec-ocaml = fstar-codec.packages.${system}.ocaml;
 
         _pkg = import ./default.nix {
           inherit
@@ -164,13 +165,18 @@
             stdenv
             codec-src
             codec-checked
-            codec-ocaml
             ;
           dotnet = dotnet-sdk_10;
         };
 
+        treefmtModule = treefmt-nix.lib.evalModule pkgs ./treefmt.nix;
+
       in
       {
+        formatter = treefmtModule.config.build.wrapper;
+
+        checks.formatting = treefmtModule.config.build.check self;
+
         # The build targets are named by deliverable (no `fstar-basen-`
         # prefix); `default` aliases `native` (the C11 shared/static lib).
         packages.default = _pkg.native;

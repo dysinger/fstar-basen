@@ -1,7 +1,8 @@
+(* Copyright 2026 Department of Code LLC.
+   SPDX-License-Identifier: AGPL-3.0-or-later *)
+
 (**
 Data.BaseN — RFC 4648 Base Encodings
-
-Copyright 2026 Department of Code LLC. All rights reserved.
 
 Re-exports all four base encoding sub-modules with zero admits.
 All four encodings use direct UInt8 arithmetic with list induction.

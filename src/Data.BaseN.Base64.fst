@@ -1,7 +1,8 @@
+(* Copyright 2026 Department of Code LLC.
+   SPDX-License-Identifier: AGPL-3.0-or-later *)
+
 (**
 Data.BaseN.Base64 — RFC 4648 §4 Base64 Encoding
-
-Copyright 2026 Department of Code LLC. All rights reserved.
 
 ZERO admits. ZERO --admit_smt_queries. 100% lemmas proven.
 

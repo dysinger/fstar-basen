@@ -32,7 +32,6 @@
   dotnet,
   codec-src,
   codec-checked,
-  codec-ocaml,
 }:
 
 let
@@ -107,8 +106,18 @@ let
   # one dune library.  One file per invocation, in dependency order; the codec
   # dependency's `.checked` cache is seeded so cross-module inlining resolves.
 
+  # ocaml-modules: every module compiled into the dune library.  This is the
+  # basen pure-modules PLUS the codec pure spec (`Data.Codec.Types`,
+  # `Data.Codec`) — extracted locally (NOT consumed from `codec-ocaml`) so the
+  # raw top-level `Data_Codec_Types`/`Data_Codec` names resolve unwrapped
+  # (codec-ocaml wraps its modules into a `Codec.*` namespace, breaking the
+  # bare references the basen `.ml` emit).  No `Custard` collision: we only
+  # extract the codec PURE spec, never its Pulse leaf.
   ocaml-lib-name = builtins.replaceStrings [ "-" ] [ "_" ] pname;
-  ocaml-modules = map (m: builtins.replaceStrings [ "." ] [ "_" ] m) pure-modules;
+  ocaml-modules = (map (m: builtins.replaceStrings [ "." ] [ "_" ] m) pure-modules) ++ [
+    "Data_Codec_Types"
+    "Data_Codec"
+  ];
 
   ocaml-src = mkDerivation {
     name = "${pname}-ocaml-src";
@@ -118,60 +127,74 @@ let
       fstar-checked
     ];
     buildPhase = ''
-      export ULIB="${ulib}"
-      mkdir -p $out cache
-      cp ${fstar-checked}/*.checked cache/ 2>/dev/null || true
-      cp ${codec-checked}/*.checked cache/ 2>/dev/null || true
-      # 1) Extract the pure spec via legacy `--codegen OCaml` (one file per
-      #    invocation, dependency order).
-      for m in ${builtins.concatStringsSep " " pure-modules}; do
-        ${fstar-exe} \
-          --no_default_includes --include "$ULIB" --include ${codec-src}/src --include ./src \
-          --cache_checked_modules --cache_dir cache --odir cache \
-          src/$m.fst || exit 1
-        ${fstar-exe} \
-          --no_default_includes --include "$ULIB" --include ${codec-src}/src --include ./src --include cache \
-          --cache_checked_modules --cache_dir cache \
-          --codegen OCaml --odir $out \
-          src/$m.fst || exit 1
-      done
-      # 2) Extract the Pulse leaf (Data.BaseN.Pulse), OCaml backend.
-      PULSE_INCS=""
-      for d in ${lib.concatStringsSep " " pulse-incs}; do
-        PULSE_INCS="$PULSE_INCS --include $d"
-      done
-      ${fstar-exe} \
-        --no_default_includes --include "$ULIB" $PULSE_INCS --include ${codec-src}/src --include ./src \
-        --already_cached Prims,FStar,Pulse.Nolib,Pulse.Lib,Pulse.Class,PulseCore \
-        --z3rlimit 120 \
-        --cache_checked_modules --cache_dir cache --odir cache \
-        src/Data.BaseN.Pulse.fst || exit 1
-      ${fstar-exe} \
-        --no_default_includes --include "$ULIB" $PULSE_INCS --include ${codec-src}/src --include ./src --include cache \
-        --already_cached Prims,FStar,Pulse.Nolib,Pulse.Lib,Pulse.Class,PulseCore \
-        --cache_checked_modules --cache_dir cache \
-        --codegen Custard --custard_backend OCaml --custard_monomorphize_types true \
-        --custard_entry Data.BaseN.Pulse.encode_base16 \
-        --custard_entry Data.BaseN.Pulse.decode_base16 \
-        --custard_entry Data.BaseN.Pulse.encode_base64_triple \
-        --custard_entry Data.BaseN.Pulse.encode_base64_tail1 \
-        --custard_entry Data.BaseN.Pulse.encode_base64_tail2 \
-        --custard_entry Data.BaseN.Pulse.decode_base64_quad \
-        --odir $out \
-        src/Data.BaseN.Pulse.fst || exit 1
-      # One dune library: pure spec + Pulse leaf together.
-      cat > $out/dune-project <<DUNE_PROJECT
-(lang dune 3.11)
-(name ${pname}-ocaml)
-(package (name ${pname}-ocaml))
-DUNE_PROJECT
-      cat > $out/dune <<DUNE
-(library
- (name ${ocaml-lib-name})
- (public_name ${pname}-ocaml)
- (modules ${builtins.concatStringsSep " " ocaml-modules} Custard)
- (libraries fstar.lib codec-ocaml))
-DUNE
+            export ULIB="${ulib}"
+            mkdir -p $out cache
+            cp ${fstar-checked}/*.checked cache/ 2>/dev/null || true
+            cp ${codec-checked}/*.checked cache/ 2>/dev/null || true
+            # 0) Extract the codec pure spec (Data.Codec.Types + Data.Codec) locally
+            #    so the top-level `Data_Codec_Types`/`Data_Codec` module names the
+            #    basen `.ml` emit resolve unwrapped (codec-ocaml wraps them).
+            for m in Data.Codec.Types Data.Codec; do
+              ${fstar-exe} \
+                --no_default_includes --include "$ULIB" --include ${codec-src}/src \
+                --cache_checked_modules --cache_dir cache --odir cache \
+                ${codec-src}/src/$m.fst || exit 1
+              ${fstar-exe} \
+                --no_default_includes --include "$ULIB" --include ${codec-src}/src --include cache \
+                --cache_checked_modules --cache_dir cache \
+                --codegen OCaml --odir $out \
+                ${codec-src}/src/$m.fst || exit 1
+            done
+            # 1) Extract the pure spec via legacy `--codegen OCaml` (one file per
+            #    invocation, dependency order).
+            for m in ${builtins.concatStringsSep " " pure-modules}; do
+              ${fstar-exe} \
+                --no_default_includes --include "$ULIB" --include ${codec-src}/src --include ./src \
+                --cache_checked_modules --cache_dir cache --odir cache \
+                src/$m.fst || exit 1
+              ${fstar-exe} \
+                --no_default_includes --include "$ULIB" --include ${codec-src}/src --include ./src --include cache \
+                --cache_checked_modules --cache_dir cache \
+                --codegen OCaml --odir $out \
+                src/$m.fst || exit 1
+            done
+            # 2) Extract the Pulse leaf (Data.BaseN.Pulse), OCaml backend.
+            PULSE_INCS=""
+            for d in ${lib.concatStringsSep " " pulse-incs}; do
+              PULSE_INCS="$PULSE_INCS --include $d"
+            done
+            ${fstar-exe} \
+              --no_default_includes --include "$ULIB" $PULSE_INCS --include ${codec-src}/src --include ./src \
+              --already_cached Prims,FStar,Pulse.Nolib,Pulse.Lib,Pulse.Class,PulseCore \
+              --z3rlimit 120 \
+              --cache_checked_modules --cache_dir cache --odir cache \
+              src/Data.BaseN.Pulse.fst || exit 1
+            ${fstar-exe} \
+              --no_default_includes --include "$ULIB" $PULSE_INCS --include ${codec-src}/src --include ./src --include cache \
+              --already_cached Prims,FStar,Pulse.Nolib,Pulse.Lib,Pulse.Class,PulseCore \
+              --cache_checked_modules --cache_dir cache \
+              --codegen Custard --custard_backend OCaml --custard_monomorphize_types true \
+              --custard_entry Data.BaseN.Pulse.encode_base16 \
+              --custard_entry Data.BaseN.Pulse.decode_base16 \
+              --custard_entry Data.BaseN.Pulse.encode_base64_triple \
+              --custard_entry Data.BaseN.Pulse.encode_base64_tail1 \
+              --custard_entry Data.BaseN.Pulse.encode_base64_tail2 \
+              --custard_entry Data.BaseN.Pulse.decode_base64_quad \
+              --odir $out \
+              src/Data.BaseN.Pulse.fst || exit 1
+            # One dune library: pure spec + Pulse leaf together.
+            cat > $out/dune-project <<DUNE_PROJECT
+      (lang dune 3.11)
+      (name ${pname}-ocaml)
+      (package (name ${pname}-ocaml))
+      DUNE_PROJECT
+            cat > $out/dune <<DUNE
+      (library
+       (name ${ocaml-lib-name})
+       (public_name ${pname}-ocaml)
+       (modules ${builtins.concatStringsSep " " ocaml-modules} Custard)
+       (libraries fstar.lib))
+      DUNE
     '';
     installPhase = "true";
   };
@@ -181,7 +204,7 @@ DUNE
     version = "0.1.0";
     src = ocaml-src;
     inherit meta;
-    propagatedBuildInputs = [ fstar codec-ocaml ];
+    propagatedBuildInputs = [ fstar ];
     buildInputs = with ocamlPackages; [
       batteries
       pprint
