@@ -1,6 +1,7 @@
 (* Copyright 2026 Department of Code LLC.
    SPDX-License-Identifier: AGPL-3.0-or-later *)
 
+
 (**
 Data.BaseN.Base08 — Octal Byte Encoding (3 digits per byte)
 
@@ -17,17 +18,22 @@ Architecture:
 *)
 module Data.BaseN.Base08
 
+
 open FStar.UInt8
 open FStar.List.Tot
+
 
 module U8 = FStar.UInt8
 module L = FStar.List.Tot
 
+
 (** Character predicates *)
+
 
 (** [is_octal_digit b] is true when byte [b] is '0'..'7'. *)
 let is_octal_digit (b: UInt8.t) : bool =
   let v = U8.v b in 0x30 <= v && v <= 0x37
+
 
 (** [octal_digit_to_int b] converts '0'..'7' to 0..7.
     @param b Byte representing an octal digit.
@@ -35,12 +41,15 @@ let is_octal_digit (b: UInt8.t) : bool =
 let octal_digit_to_int (b: UInt8.t{is_octal_digit b}) : n:int{0 <= n /\ n <= 7} =
   U8.v b - 0x30
 
+
 (** [int_to_octal_digit n] converts 0..7 to '0'..'7'.
     @param n Integer in [0, 7]. *)
 let int_to_octal_digit (n: int{0 <= n /\ n <= 7}) : UInt8.t =
   U8.uint_to_t (0x30 + n)
 
+
 (** encode_base08 / decode_base08 *)
+
 
 (** [encode_base08] encodes each byte as three zero-padded octal digits.
     Always produces exactly 3 characters per byte.
@@ -53,6 +62,7 @@ let encode_base08 (bs: list UInt8.t) : list UInt8.t =
      int_to_octal_digit ((v / 8) % 8);
      int_to_octal_digit (v % 8)]
   ) bs)
+
 
 (** [decode_base08] parses groups of 3 octal digits into bytes.
     Three octal digits represent 0..511, exceeding the byte range
@@ -75,7 +85,9 @@ let rec decode_base08 (bs: list UInt8.t) : Tot (option (list UInt8.t)) (decrease
     else None
   | _ -> None
 
+
 (** Digit conversion lemmas *)
+
 
 (** Each octal digit 0-7 maps to/from a valid character losslessly. *)
 let lemma_octal_digit_roundtrip () : Lemma
@@ -83,6 +95,7 @@ let lemma_octal_digit_roundtrip () : Lemma
             octal_digit_to_int (int_to_octal_digit i) == i /\
             is_octal_digit (int_to_octal_digit i)))
   = ()
+
 
 (** [encode_base08] of a single byte produces exactly 3 valid octal digits. *)
 let lemma_encode_base08_single (b: UInt8.t) : Lemma
@@ -100,7 +113,9 @@ let lemma_encode_base08_single (b: UInt8.t) : Lemma
     assert (0 <= (v / 8) % 8 /\ (v / 8) % 8 <= 7);
     assert (0 <= v % 8 /\ v % 8 <= 7)
 
+
 (** Roundtrip proof *)
+
 
 (** [encode_base08] distributes over list append. *)
 let rec lemma_encode_base08_append (bs1 bs2: list UInt8.t) : Lemma
@@ -109,6 +124,7 @@ let rec lemma_encode_base08_append (bs1 bs2: list UInt8.t) : Lemma
   = match bs1 with
     | [] -> ()
     | _ :: tl -> lemma_encode_base08_append tl bs2
+
 
 (** Single byte roundtrip: decode(encode([b])) == Some([b]). *)
 let lemma_base08_single_byte (b: UInt8.t) : Lemma
@@ -124,6 +140,7 @@ let lemma_base08_single_byte (b: UInt8.t) : Lemma
             octal_digit_to_int d2 == v);
     assert (U8.uint_to_t v == b)
 
+
 (** Full roundtrip by induction on the input list. *)
 let rec lemma_base08_roundtrip (bs: list UInt8.t) : Lemma
   (ensures decode_base08 (encode_base08 bs) == Some bs)
@@ -135,7 +152,9 @@ let rec lemma_base08_roundtrip (bs: list UInt8.t) : Lemma
       lemma_base08_roundtrip tl;
       lemma_encode_base08_append [b] tl
 
+
 (** Concrete test vectors *)
+
 
 (** "" -> "". *)
 let lemma_base08_empty () : Lemma
@@ -143,35 +162,42 @@ let lemma_base08_empty () : Lemma
            decode_base08 [] == Some [])
   = ()
 
+
 (** 0x00 -> "000". *)
 let lemma_base08_zero () : Lemma
   (ensures encode_base08 [0x00uy] == [0x30uy; 0x30uy; 0x30uy])
   = lemma_octal_digit_roundtrip ()
+
 
 (** 0xFF (255) -> "377". *)
 let lemma_base08_ff () : Lemma
   (ensures encode_base08 [0xFFuy] == [0x33uy; 0x37uy; 0x37uy])
   = lemma_octal_digit_roundtrip ()
 
+
 (** Decode "377" -> [0xFF]. *)
 let lemma_base08_decode_377 () : Lemma
   (ensures decode_base08 [0x33uy; 0x37uy; 0x37uy] == Some [0xFFuy])
   = lemma_octal_digit_roundtrip ()
+
 
 (** Error: non-multiple-of-3 input returns None. *)
 let lemma_base08_decode_bad_length () : Lemma
   (ensures decode_base08 [0x30uy; 0x30uy] == None)
   = ()
 
+
 (** Error: invalid octal char '8' returns None. *)
 let lemma_base08_decode_invalid_char () : Lemma
   (ensures decode_base08 [0x38uy; 0x30uy; 0x30uy] == None)
   = ()
 
+
 (** Error: overflow (>255) returns None.  "777" = 511 > 255. *)
 let lemma_base08_decode_overflow () : Lemma
   (ensures decode_base08 [0x37uy; 0x37uy; 0x37uy] == None)
   = lemma_octal_digit_roundtrip ()
+
 
 (** Roundtrip on concrete values. *)
 let lemma_base08_roundtrip_concrete () : Lemma

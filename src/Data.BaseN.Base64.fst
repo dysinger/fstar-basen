@@ -1,6 +1,7 @@
 (* Copyright 2026 Department of Code LLC.
    SPDX-License-Identifier: AGPL-3.0-or-later *)
 
+
 (**
 Data.BaseN.Base64 — RFC 4648 §4 Base64 Encoding
 
@@ -22,15 +23,19 @@ Architecture:
 *)
 module Data.BaseN.Base64
 
+
 open Data.Codec.Types
 open FStar.UInt8
 open FStar.List.Tot
 open FStar.Math.Lemmas
 
+
 module U8 = FStar.UInt8
 module L = FStar.List.Tot
 
+
 (** Base64 alphabet *)
+
 
 (** [b64_val i] maps a 6-bit value to its RFC 4648 §4 base64 character.
     @param i Integer in [0, 63]. *)
@@ -41,6 +46,7 @@ let b64_val (i: int{0 <= i /\ i <= 63}) : Tot byte =
   else if i <= 61 then u (0x30 + i - 52)
   else if i = 62 then u 0x2B
   else u 0x2F
+
 
 (** [base64_char_to_val b] converts a base64 character to its 6-bit value.
     @param b Byte representing a base64 character.
@@ -54,6 +60,7 @@ let base64_char_to_val (b: byte) : option int =
   else if v = 0x2F then Some 63
   else None
 
+
 (** [is_base64_char b] is true when byte [b] is a valid RFC 4648 §4 base64
     character (A-Z, a-z, 0-9, +, /). Padding (=) is NOT a base64 char. *)
 let is_base64_char (b: byte) : bool =
@@ -61,13 +68,17 @@ let is_base64_char (b: byte) : bool =
   (0x41 <= v && v <= 0x5A) || (0x61 <= v && v <= 0x7A) ||
   (0x30 <= v && v <= 0x39) || v = 0x2B || v = 0x2F
 
+
 (** [pad_byte] is the ASCII '=' character used as padding. *)
 let pad_byte : byte = U8.uint_to_t 0x3D
+
 
 (** [is_pad b] is true when byte [b] is '='. *)
 let is_pad (b: byte) : bool = U8.v b = 0x3D
 
+
 (** Alphabet roundtrip *)
+
 
 (** Base64 character roundtrip: encode then decode returns the original 6-bit
     value. *)
@@ -75,17 +86,21 @@ let lemma_b64_char_roundtrip () : Lemma
   (ensures (forall (i: int{0 <= i /\ i <= 63}). base64_char_to_val (b64_val i) == Some i))
   = ()
 
+
 (** [b64_val i] is never the pad character '='. *)
 let lemma_b64_val_not_pad () : Lemma
   (ensures (forall (i: int{0 <= i /\ i <= 63}). not (is_pad (b64_val i))))
   = ()
+
 
 (** [b64_val i] always produces a valid base64 character. *)
 let lemma_b64_val_is_char () : Lemma
   (ensures (forall (i: int{0 <= i /\ i <= 63}). is_base64_char (b64_val i)))
   = ()
 
+
 (** encode_base64 — explicit cons, no [@], direct formulas *)
+
 
 (** [encode_base64] encodes bytes to RFC 4648 §4 base64 characters.
     All cases use explicit cons (no [@]) and direct bit-slicing formulas
@@ -110,7 +125,9 @@ let rec encode_base64 (bs: list byte) : Tot (list byte) (decreases bs) =
     b64_val (v0 / 4) :: b64_val ((v0 % 4) * 16 + v1 / 16) ::
     b64_val ((v1 % 16) * 4) :: pad_byte :: []
 
+
 (** Byte extraction lemmas *)
+
 
 (** Byte 0 extraction: v0 = (v0/4)*4 + ((v0%4)*16 + v1/16)/16. *)
 let lemma_b64_byte0 (v0 v1: int) : Lemma
@@ -118,6 +135,7 @@ let lemma_b64_byte0 (v0 v1: int) : Lemma
   (ensures (v0 / 4) * 4 + ((v0 % 4) * 16 + v1 / 16) / 16 == v0)
   = lemma_div_mod v0 4;
     small_div (v1 / 16) 16
+
 
 (** Byte 1 extraction for the 2-byte tail:
     v1 = (c1%16)*16 + c2/4 where
@@ -131,6 +149,7 @@ let lemma_b64_byte1 (v0 v1: int) : Lemma
   = lemma_div_mod v1 16;
     cancel_mul_div (v1 % 16) 4
 
+
 (** Byte 2 extraction for the 3-byte case:
     v2 = (c2%4)*64 + c3 where
     c2 = (v1%16)*4 + v2/64, c3 = v2%64. *)
@@ -143,7 +162,9 @@ let lemma_b64_byte2 (v1 v2: int) : Lemma
   = lemma_div_mod v2 64;
     lemma_mod_plus_distr_l ((v1 % 16) * 4) (v2 / 64) 4
 
+
 (** decode_base64 — explicit cons, no [@] *)
+
 
 (** [decode_base64] parses groups of 4 base64 chars with = padding.
     Uses explicit cons pattern matching (no [@]).
@@ -186,7 +207,9 @@ let rec decode_base64 (bs: list byte) : Tot (option (list byte)) (decreases (L.l
        | _ -> None)
   | _ -> None
 
+
 (** Per-block roundtrip lemmas *)
+
 
 (** 1-byte block (with two pads) roundtrip. *)
 let lemma_base64_single (b0: byte) : Lemma
@@ -196,6 +219,7 @@ let lemma_base64_single (b0: byte) : Lemma
     lemma_b64_val_is_char ();
     lemma_b64_byte0 (U8.v b0) 0
 
+
 (** 2-byte block (with one pad) roundtrip. *)
 let lemma_base64_pair (b0 b1: byte) : Lemma
   (ensures decode_base64 (encode_base64 [b0; b1]) == Some [b0; b1])
@@ -204,6 +228,7 @@ let lemma_base64_pair (b0 b1: byte) : Lemma
     lemma_b64_val_is_char ();
     lemma_b64_byte0 (U8.v b0) (U8.v b1);
     lemma_b64_byte1 (U8.v b0) (U8.v b1)
+
 
 (** 3-byte block roundtrip.
 
@@ -223,6 +248,7 @@ let lemma_base64_triple (b0 b1 b2: byte) : Lemma
     lemma_b64_byte1 (U8.v b0) (U8.v b1);
     lemma_b64_byte2 (U8.v b1) (U8.v b2)
 #pop-options
+
 
 (** Full roundtrip by induction.
 
@@ -244,22 +270,27 @@ let rec lemma_base64_roundtrip (bs: list byte) : Lemma
       lemma_base64_roundtrip tl
 #pop-options
 
+
 (** Concrete test vectors — RFC 4648 §10 *)
+
 
 (** "" -> "". *)
 let lemma_base64_empty () : Lemma
   (ensures encode_base64 [] == [] /\ decode_base64 [] == Some [])
   = ()
 
+
 (** "f" -> "Zg==". *)
 let lemma_base64_f () : Lemma
   (ensures encode_base64 [0x66uy] == [0x5Auy; 0x67uy; 0x3Duy; 0x3Duy])
   = lemma_b64_char_roundtrip ()
 
+
 (** "fo" -> "Zm8=". *)
 let lemma_base64_fo () : Lemma
   (ensures encode_base64 [0x66uy; 0x6Fuy] == [0x5Auy; 0x6Duy; 0x38uy; 0x3Duy])
   = lemma_b64_char_roundtrip ()
+
 
 (** "foo" -> "Zm9v". *)
 let lemma_base64_foo () : Lemma
@@ -267,11 +298,13 @@ let lemma_base64_foo () : Lemma
         == [0x5Auy; 0x6Duy; 0x39uy; 0x76uy])
   = lemma_b64_char_roundtrip ()
 
+
 (** "foob" -> "Zm9vYg==". *)
 let lemma_base64_foob () : Lemma
   (ensures encode_base64 [0x66uy; 0x6Fuy; 0x6Fuy; 0x62uy]
         == [0x5Auy; 0x6Duy; 0x39uy; 0x76uy; 0x59uy; 0x67uy; 0x3Duy; 0x3Duy])
   = lemma_b64_char_roundtrip ()
+
 
 (** "fooba" -> "Zm9vYmE=". *)
 let lemma_base64_fooba () : Lemma
@@ -279,36 +312,43 @@ let lemma_base64_fooba () : Lemma
         == [0x5Auy; 0x6Duy; 0x39uy; 0x76uy; 0x59uy; 0x6Duy; 0x45uy; 0x3Duy])
   = lemma_b64_char_roundtrip ()
 
+
 (** "foobar" -> "Zm9vYmFy". *)
 let lemma_base64_foobar () : Lemma
   (ensures encode_base64 [0x66uy; 0x6Fuy; 0x6Fuy; 0x62uy; 0x61uy; 0x72uy]
         == [0x5Auy; 0x6Duy; 0x39uy; 0x76uy; 0x59uy; 0x6Duy; 0x46uy; 0x79uy])
   = lemma_b64_char_roundtrip ()
 
+
 (** Decode "Zg==" -> "f". *)
 let lemma_base64_decode_f () : Lemma
   (ensures decode_base64 [0x5Auy; 0x67uy; 0x3Duy; 0x3Duy] == Some [0x66uy])
   = lemma_b64_char_roundtrip ()
+
 
 (** Decode "Zm9v" -> "foo". *)
 let lemma_base64_decode_foo () : Lemma
   (ensures decode_base64 [0x5Auy; 0x6Duy; 0x39uy; 0x76uy] == Some [0x66uy; 0x6Fuy; 0x6Fuy])
   = lemma_b64_char_roundtrip ()
 
+
 (** Error: invalid char '!' returns None. *)
 let lemma_base64_decode_invalid_char () : Lemma
   (ensures decode_base64 [0x21uy; 0x67uy; 0x3Duy; 0x3Duy] == None)
   = ()
+
 
 (** Error: pad in first position returns None. *)
 let lemma_base64_decode_pad_first () : Lemma
   (ensures decode_base64 [0x3Duy; 0x67uy; 0x3Duy; 0x3Duy] == None)
   = ()
 
+
 (** Error: wrong-length input returns None. *)
 let lemma_base64_decode_bad_length () : Lemma
   (ensures decode_base64 [0x5Auy; 0x67uy] == None)
   = ()
+
 
 (** Roundtrip on concrete values. *)
 let lemma_base64_roundtrip_concrete () : Lemma

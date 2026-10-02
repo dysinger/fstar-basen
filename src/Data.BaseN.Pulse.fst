@@ -1,6 +1,7 @@
 (* Copyright 2026 Department of Code LLC.
    SPDX-License-Identifier: AGPL-3.0-or-later *)
 
+
 (**
 Data.BaseN.Pulse — C-extractable base16/base64 layer via Pulse + Custard.
 
@@ -55,6 +56,7 @@ Written for F* v2026.09.20 (Custard `--custard_backend C`).  Zero admits.
 module Data.BaseN.Pulse
 #lang-pulse
 
+
 open Pulse
 open Pulse.Lib.Reference
 module A = Pulse.Lib.Array
@@ -63,16 +65,21 @@ module U8 = FStar.UInt8
 module U32 = FStar.UInt32
 module Seq = FStar.Seq
 
+
 open FStar.Seq
 open FStar.Int.Cast
+
 
 open Data.BaseN.Base16
 open Data.BaseN.Base64
 
+
 module B16 = Data.BaseN.Base16
 module B64 = Data.BaseN.Base64
 
+
 (* ── Types (alphabetical) ───────────────────────────────────────────── ─ *)
+
 
 (** [bytes3] — a fixed 3-byte buffer plus a length [n] (1, 2, or 3).
 
@@ -81,10 +88,12 @@ module B64 = Data.BaseN.Base64
     Bytes beyond [n] are zeroed. *)
 type bytes3 = { n: U32.t; b0: U8.t; b1: U8.t; b2: U8.t }
 
+
 (** [opt_nibble] — an optional nibble (0..15), the result of [unhex]. *)
 type opt_nibble =
   | ON_None
   | ON_Some of (v: U32.t{U32.v v < 16})
+
 
 (** [opt_result_bytes] — the base64 decode result: [ORB_None] or the decoded
     [bytes3] (length 1..3). *)
@@ -92,18 +101,22 @@ type opt_result_bytes =
   | ORB_None
   | ORB_Some of bytes3
 
+
 (** [opt_result_u8] — the base16 decode result: [OR8_None] or a
     ([U8.t] & [U32.t]) pair of (byte, bytes-written). *)
 type opt_result_u8 =
   | OR8_None
   | OR8_Some of (U8.t & U32.t)
 
+
 (** [opt_u32] — an optional U32 in [0, 64), the range of a base64 6-bit value. *)
 type opt_u32 =
   | OU_None
   | OU_Some of (v: U32.t{U32.v v < 64})
 
+
 (* ── Pure helpers (alphabetical) ─────────────────────────────────────── *)
+
 
 (** [b64_val_i i] converts a 6-bit value (0..63) to its base64 character. *)
 let b64_val_i (i: U32.t{U32.v i < 64}) : Tot U8.t =
@@ -113,29 +126,36 @@ let b64_val_i (i: U32.t{U32.v i < 64}) : Tot U8.t =
   else if U32.eq i 62ul then uint32_to_uint8 0x2Bul
   else uint32_to_uint8 0x2Ful
 
+
 (** [hex_digit n] converts a nibble (0..15) to its ASCII hex char (0-9, A-F). *)
 let hex_digit (n: U32.t{U32.v n < 16}) : Tot U8.t =
   if U32.lt n 10ul then uint32_to_uint8 (U32.add 48ul n)
   else uint32_to_uint8 (U32.add 55ul n)
 
+
 (** [is_pad_u8 c] is true when [c] is the '=' pad (0x3D). *)
 let is_pad_u8 (c: U8.t) : bool = U8.eq c 0x3Duy
+
 
 (** [is_any_pad_u8 c0 c1] is true when either [c0] or [c1] is the '=' pad. *)
 let is_any_pad_u8 (c0 c1: U8.t) : bool = is_pad_u8 c0 || is_pad_u8 c1
 
+
 (** [is_pad_pair c2 c3] is true when both [c2] and [c3] are '=' pads. *)
 let is_pad_pair (c2 c3: U8.t) : bool = is_pad_u8 c2 && is_pad_u8 c3
+
 
 (** [is_single_pad c2 c3] is true when exactly one of [c2]/[c3] is a '=' pad. *)
 let is_single_pad (c2 c3: U8.t) : bool =
   (is_pad_u8 c2 && not (is_pad_u8 c3)) || (is_pad_u8 c3 && not (is_pad_u8 c2))
+
 
 (** [pad_byte] is the '=' padding byte.
 
     Localised to avoid coupling to the [open]-shadowed
     [Data.BaseN.Base64.pad_byte] / [Data.BaseN.Base32.pad_byte]. *)
 let pad_byte : U8.t = U8.uint_to_t 0x3D
+
 
 (** [unbase64 c] decodes a base64 char to its 0..63 value, or [OU_None]. *)
 let unbase64 (c: U8.t) : Tot opt_u32 =
@@ -147,6 +167,7 @@ let unbase64 (c: U8.t) : Tot opt_u32 =
   else if U32.eq c32 0x2Ful then OU_Some 63ul
   else OU_None
 
+
 (** [unhex c] converts an ASCII hex char to its 0..15 value, or [ON_None]. *)
 let unhex (c: U8.t) : Tot opt_nibble =
   let c32 = uint8_to_uint32 c in
@@ -155,7 +176,9 @@ let unhex (c: U8.t) : Tot opt_nibble =
   else if U32.lte 97ul c32 && U32.lte c32 102ul then ON_Some (U32.sub c32 87ul)
   else ON_None
 
+
 (* ── Pure bridge lemmas (alphabetical) ───────────────────────────────── *)
+
 
 (** [lemma_b64_val_i_eq_b64_val] bridges the Pulse [b64_val_i] to the pure
     [b64_val] from [Data.BaseN.Base64]. *)
@@ -172,6 +195,7 @@ let lemma_b64_val_i_eq_b64_val (n: nat{n < 64}) : Lemma
     else
       assert (b64_val_i (U32.uint_to_t n) == U8.uint_to_t 0x2F)
 
+
 (** [lemma_hex_digit_eq_nibble] bridges the Pulse [hex_digit] to the pure
     [nibble_to_upper_hex] from [Data.BaseN.Base16]. *)
 let lemma_hex_digit_eq_nibble (n: nat{n < 16}) : Lemma
@@ -183,6 +207,7 @@ let lemma_hex_digit_eq_nibble (n: nat{n < 16}) : Lemma
     assert (hex_digit (U32.uint_to_t n) == U8.uint_to_t (n + 55));
     assert (nibble_to_upper_hex n == U8.uint_to_t (0x37 + n))
     end
+
 
 (** [lemma_hex_roundtrip n] proves that for [n < 16], [hex_digit] then [unhex]
     returns the original value. *)
@@ -202,7 +227,9 @@ let lemma_hex_roundtrip (n: U32.t) : Lemma
       assert (U32.uint_to_t (hd_v - 55) == n)
     end
 
+
 (* ── Pure decode specs (noextract: mirror the `fn` bodies exactly) ───── *)
+
 
 (** [decode_base16_spec chars] — the pure spec for [decode_base16]. *)
 noextract
@@ -215,6 +242,7 @@ let decode_base16_spec (chars: Seq.seq U8.t) : opt_result_u8 =
     | ON_Some hi, ON_Some lo ->
       OR8_Some (U8.uint_to_t (U32.v hi * 16 + U32.v lo), 2ul)
     | _ -> OR8_None
+
 
 (** [decode_base64_quad_spec chars] — the pure spec for [decode_base64_quad]. *)
 noextract
@@ -247,7 +275,9 @@ let decode_base64_quad_spec (chars: Seq.seq U8.t) : opt_result_bytes =
            | _ -> ORB_None)
       | _ -> ORB_None
 
+
 (* ── Pure spec roundtrip lemmas (noextract, alphabetical) ────────────── *)
+
 
 (** [lemma_decode_base16_spec_roundtrip b] — the base16 spec decodes its own
     encoding to [OR8_Some (b, 2ul)]. *)
@@ -263,6 +293,7 @@ let lemma_decode_base16_spec_roundtrip (b: U8.t) : Lemma
   assert (unhex hi == ON_Some (U32.uint_to_t (U8.v b / 16)));
   assert (unhex lo == ON_Some (U32.uint_to_t (U8.v b % 16)))
 
+
 (** [lemma_decode_base64_spec_roundtrip_tail1 b0] — the base64 spec decodes its
     own 1-byte encoding to `{ n = 1ul; b0 = b0; … }`. *)
 noextract
@@ -270,6 +301,7 @@ let lemma_decode_base64_spec_roundtrip_tail1 (b0: U8.t) : Lemma
   (decode_base64_quad_spec (Seq.seq_of_list (B64.encode_base64 [b0]))
    == ORB_Some ({ n = 1ul; b0 = b0; b1 = 0uy; b2 = 0uy }))
   = B64.lemma_base64_single b0
+
 
 (** [lemma_decode_base64_spec_roundtrip_tail2 b0 b1] — the base64 spec decodes
     its own 2-byte encoding to `{ n = 2ul; b0 = b0; b1 = b1; … }`. *)
@@ -279,6 +311,7 @@ let lemma_decode_base64_spec_roundtrip_tail2 (b0 b1: U8.t) : Lemma
    == ORB_Some ({ n = 2ul; b0 = b0; b1 = b1; b2 = 0uy }))
   = B64.lemma_base64_pair b0 b1
 
+
 (** [lemma_decode_base64_spec_roundtrip_triple b0 b1 b2] — the base64 spec
     decodes its own 3-byte encoding to `{ n = 3ul; b0 = b0; b1 = b1; b2 = b2 }`. *)
 noextract
@@ -287,7 +320,9 @@ let lemma_decode_base64_spec_roundtrip_triple (b0 b1 b2: U8.t) : Lemma
    == ORB_Some ({ n = 3ul; b0 = b0; b1 = b1; b2 = b2 }))
   = B64.lemma_base64_triple b0 b1 b2
 
+
 (* ── Encode functions — each with full byte-level post-condition ─────── *)
+
 
 (** [encode_base16] writes 2 hex chars from a single byte.
 
@@ -328,6 +363,7 @@ fn encode_base16 (b: U8.t) (buf: A.array U8.t) (off: U32.t)
   2ul
 }
 
+
 (** [encode_base64_tail1] writes 4 chars from a single byte + "==" padding.
 
     @param b0 The byte to encode.
@@ -367,6 +403,7 @@ fn encode_base64_tail1 (b0: U8.t) (buf: A.array U8.t) (off: U32.t)
   buf.(j3) <- pad_byte;
   4ul
 }
+
 
 (** [encode_base64_tail2] writes 4 chars from two bytes + "=" padding.
 
@@ -411,6 +448,7 @@ fn encode_base64_tail2 (b0 b1: U8.t) (buf: A.array U8.t) (off: U32.t)
   buf.(j3) <- pad_byte;
   4ul
 }
+
 
 (** [encode_base64_triple] writes 4 base64 chars from three bytes.
 
@@ -463,7 +501,9 @@ fn encode_base64_triple (b0 b1 b2: U8.t) (buf: A.array U8.t) (off: U32.t)
   4ul
 }
 
+
 (* ── Decode functions — each with result-level post-condition ───────── *)
+
 
 (** [decode_base16] decodes 2 hex chars → 1 byte.
 
@@ -503,6 +543,7 @@ fn decode_base16 (buf: A.array U8.t) (off: U32.t)
     }
   }
 }
+
 
 (** [decode_base64_quad] decodes 4 base64 chars → up to 3 bytes.
 
@@ -579,7 +620,9 @@ fn decode_base64_quad (buf: A.array U8.t) (off: U32.t)
   }
 }
 
+
 (* ── Value-preserving roundtrip lemmas (alphabetical) ───────────────── *)
+
 
 (** [lemma_pulse_base16_roundtrip]: encode then decode preserves the value.
 
@@ -605,6 +648,7 @@ fn lemma_pulse_base16_roundtrip (b: U8.t) (buf: A.array U8.t) (off: U32.t)
   (n, r)
 }
 
+
 (** [lemma_pulse_base64_tail1_roundtrip]: encode then decode preserves 1 byte.
 
     @param b0 The byte to roundtrip.
@@ -629,6 +673,7 @@ fn lemma_pulse_base64_tail1_roundtrip (b0: U8.t) (buf: A.array U8.t) (off: U32.t
   (n, r)
 }
 
+
 (** [lemma_pulse_base64_tail2_roundtrip]: encode then decode preserves 2 bytes.
 
     @param b0 b1 The two bytes to roundtrip.
@@ -652,6 +697,7 @@ fn lemma_pulse_base64_tail2_roundtrip (b0 b1: U8.t) (buf: A.array U8.t) (off: U3
   lemma_decode_base64_spec_roundtrip_tail2 b0 b1;
   (n, r)
 }
+
 
 (** [lemma_pulse_base64_triple_roundtrip]: encode then decode preserves 3 bytes.
 

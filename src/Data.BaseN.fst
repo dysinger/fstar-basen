@@ -1,6 +1,7 @@
 (* Copyright 2026 Department of Code LLC.
    SPDX-License-Identifier: AGPL-3.0-or-later *)
 
+
 (**
 Data.BaseN — RFC 4648 Base Encodings
 
@@ -22,6 +23,7 @@ definitions are semantically equivalent.
 @header Data.BaseN
 *)
 module Data.BaseN
+
 
 include Data.BaseN.Base08
 include Data.BaseN.Base16

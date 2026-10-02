@@ -1,6 +1,7 @@
 (* Copyright 2026 Department of Code LLC.
    SPDX-License-Identifier: AGPL-3.0-or-later *)
 
+
 (**
 Data.BaseN.Base32 — RFC 4648 §6 Base32 Encoding
 
@@ -23,21 +24,26 @@ Architecture:
 *)
 module Data.BaseN.Base32
 
+
 open Data.Codec.Types
 open FStar.UInt8
 open FStar.List.Tot
 open FStar.Math.Lemmas
 
+
 module U8 = FStar.UInt8
 module L = FStar.List.Tot
 
+
 (** Base32 alphabet (RFC 4648 §6: A-Z + 2-7) *)
+
 
 (** [b32_val i] maps a 5-bit value to its RFC 4648 §6 base32 character.
     @param i Integer in [0, 31]. *)
 let b32_val (i: int{0 <= i /\ i <= 31}) : Tot byte =
   let u = U8.uint_to_t in
   if i <= 25 then u (0x41 + i) else u (0x32 + i - 26)
+
 
 (** [base32_char_to_val b] converts a base32 character to its 5-bit value.
     @param b Byte representing a base32 character.
@@ -48,19 +54,24 @@ let base32_char_to_val (b: byte) : option int =
   else if 0x32 <= v && v <= 0x37 then Some (v - 0x32 + 26)
   else None
 
+
 (** [is_base32_char b] is true when byte [b] is a valid RFC 4648 §6 base32
     character (A-Z, 2-7). Padding (=) is NOT a base32 char. *)
 let is_base32_char (b: byte) : bool =
   let v = U8.v b in
   (0x41 <= v && v <= 0x5A) || (0x32 <= v && v <= 0x37)
 
+
 (** [pad_byte] is the ASCII '=' character used as padding. *)
 let pad_byte : byte = U8.uint_to_t 0x3D
+
 
 (** [is_pad b] is true when byte [b] is '='. *)
 let is_pad (b: byte) : bool = U8.v b = 0x3D
 
+
 (** Alphabet roundtrip *)
+
 
 (** Base32 character roundtrip: encode then decode returns the original 5-bit
     value. *)
@@ -68,17 +79,21 @@ let lemma_b32_char_roundtrip () : Lemma
   (ensures (forall (i: int{0 <= i /\ i <= 31}). base32_char_to_val (b32_val i) == Some i))
   = ()
 
+
 (** [b32_val i] is never the pad character '=' (0x3D). *)
 let lemma_b32_val_not_pad () : Lemma
   (ensures (forall (i: int{0 <= i /\ i <= 31}). not (is_pad (b32_val i))))
   = ()
+
 
 (** [b32_val i] always produces a valid base32 character. *)
 let lemma_b32_val_is_char () : Lemma
   (ensures (forall (i: int{0 <= i /\ i <= 31}). is_base32_char (b32_val i)))
   = ()
 
+
 (** encode_base32 — explicit cons, no [@] *)
+
 
 (** [encode_base32] encodes bytes to RFC 4648 §6 base32 characters.
     All cases use explicit cons (no [@]) so the SMT can see the list
@@ -128,7 +143,9 @@ let rec encode_base32 (bs: list byte) : Tot (list byte) (decreases bs) =
     b32_val ((v3 / 4) % 32) :: b32_val ((v3 % 4) * 8) ::
     pad_byte :: []
 
+
 (** Byte extraction lemmas *)
+
 
 (** Byte 0 extraction: v0 = (v0/8)*8 + ((v0%8)*4 + v1/64)/4. *)
 let lemma_b32_byte0 (v0 v1: int) : Lemma
@@ -136,6 +153,7 @@ let lemma_b32_byte0 (v0 v1: int) : Lemma
   (ensures (v0 / 8) * 8 + ((v0 % 8) * 4 + v1 / 64) / 4 == v0)
   = lemma_div_mod v0 8;
     small_div (v1 / 64) 4
+
 
 (** Byte 1 extraction: v1 = (c1%4)*64 + c2*2 + c3/16 where
     c1 = (v0%8)*4 + v1/64, c2 = (v1/2)%32, c3 = (v1%2)*16 + v2/16. *)
@@ -150,6 +168,7 @@ let lemma_b32_byte1 (v0 v1 v2: int) : Lemma
     small_div (v2 / 16) 16;
     lemma_mod_plus_distr_l ((v0 % 8) * 4) (v1 / 64) 4
 
+
 (** Byte 2 extraction: v2 = (c3%16)*16 + c4/2 where
     c3 = (v1%2)*16 + v2/16, c4 = (v2%16)*2 + v3/128. *)
 let lemma_b32_byte2 (v1 v2 v3: int) : Lemma
@@ -161,6 +180,7 @@ let lemma_b32_byte2 (v1 v2 v3: int) : Lemma
   = lemma_div_mod v2 16;
     small_div (v3 / 128) 2;
     lemma_mod_plus_distr_l ((v1 % 2) * 16) (v2 / 16) 16
+
 
 (** Byte 3 extraction: v3 = (c4%2)*128 + c5*4 + c6/8 where
     c4 = (v2%16)*2 + v3/128, c5 = (v3/4)%32, c6 = (v3%4)*8 + v4/32. *)
@@ -176,6 +196,7 @@ let lemma_b32_byte3 (v2 v3 v4: int) : Lemma
     small_div (v4 / 32) 8;
     lemma_mod_plus_distr_l ((v2 % 16) * 2) (v3 / 128) 2
 
+
 (** Byte 4 extraction: v4 = (c6%8)*32 + c7 where
     c6 = (v3%4)*8 + v4/32, c7 = v4%32. *)
 let lemma_b32_byte4 (v3 v4: int) : Lemma
@@ -187,7 +208,9 @@ let lemma_b32_byte4 (v3 v4: int) : Lemma
   = lemma_div_mod v4 32;
     lemma_mod_plus_distr_l ((v3 % 4) * 8) (v4 / 32) 8
 
+
 (** decode_base32 — non-recursive group decoder + recursive loop, no [@] *)
+
 
 (** [decode_base32_group] decodes one 8-character base32 group.
     Handles all 5 padding cases (pad_count = 0, 1, 3, 4, 6).
@@ -253,6 +276,7 @@ let decode_base32_group (group: list byte) : option (list byte) =
      | _ -> None)
   | _ -> None
 
+
 (** [decode_base32] parses groups of 8 base32 chars with = padding.
     Uses explicit cons pattern matching (no [@]) so the SMT can see
     through the list structure directly.
@@ -279,7 +303,9 @@ let rec decode_base32 (bs: list byte) : Tot (option (list byte)) (decreases (L.l
      | None -> None)
   | _ -> None
 
+
 (** Proof lemmas *)
+
 
 (** [decode_base32_group] directly on the 8 encoded chars returns the
     5 original bytes. *)
@@ -304,12 +330,15 @@ let lemma_decode_base32_group_quintet (b0 b1 b2 b3 b4: byte) : Lemma
     lemma_b32_byte3 (U8.v b2) (U8.v b3) (U8.v b4);
     lemma_b32_byte4 (U8.v b3) (U8.v b4)
 
+
 (** Per-block roundtrip lemmas *)
+
 
 (** 5-byte block roundtrip. *)
 let lemma_base32_quintet (b0 b1 b2 b3 b4: byte) : Lemma
   (ensures decode_base32 (encode_base32 [b0; b1; b2; b3; b4]) == Some [b0; b1; b2; b3; b4])
   = lemma_decode_base32_group_quintet b0 b1 b2 b3 b4
+
 
 (** 4-byte block (with one pad) roundtrip.
     [v4=0]: passes zero for the absent 5th byte — the byte-extraction
@@ -326,6 +355,7 @@ let lemma_base32_quad (b0 b1 b2 b3: byte) : Lemma
     lemma_b32_byte2 (U8.v b1) (U8.v b2) (U8.v b3);
     lemma_b32_byte3 (U8.v b2) (U8.v b3) 0
 
+
 (** 3-byte block (with three pads) roundtrip.
     [v3=v4=0]: see [lemma_base32_quad]. *)
 let lemma_base32_triple (b0 b1 b2: byte) : Lemma
@@ -337,6 +367,7 @@ let lemma_base32_triple (b0 b1 b2: byte) : Lemma
     lemma_b32_byte1 (U8.v b0) (U8.v b1) (U8.v b2);
     lemma_b32_byte2 (U8.v b1) (U8.v b2) 0
 
+
 (** 2-byte block (with four pads) roundtrip.
     [v2=v3=v4=0]: see [lemma_base32_quad]. *)
 let lemma_base32_pair (b0 b1: byte) : Lemma
@@ -347,6 +378,7 @@ let lemma_base32_pair (b0 b1: byte) : Lemma
     lemma_b32_byte0 (U8.v b0) (U8.v b1);
     lemma_b32_byte1 (U8.v b0) (U8.v b1) 0
 
+
 (** 1-byte block (with six pads) roundtrip.
     [v1=v2=v3=v4=0]: see [lemma_base32_quad]. *)
 let lemma_base32_single (b0: byte) : Lemma
@@ -355,6 +387,7 @@ let lemma_base32_single (b0: byte) : Lemma
     lemma_b32_val_not_pad ();
     lemma_b32_val_is_char ();
     lemma_b32_byte0 (U8.v b0) 0
+
 
 (** Full roundtrip by induction.
 
@@ -377,22 +410,27 @@ let rec lemma_base32_roundtrip (bs: list byte) : Lemma
       lemma_base32_roundtrip tl
 #pop-options
 
+
 (** Concrete test vectors — RFC 4648 §10 *)
+
 
 (** "" -> "". *)
 let lemma_base32_empty () : Lemma
   (ensures encode_base32 [] == [] /\ decode_base32 [] == Some [])
   = ()
 
+
 (** "f" -> "MY======". *)
 let lemma_base32_f () : Lemma
   (ensures encode_base32 [0x66uy] == [0x4Duy; 0x59uy; 0x3Duy; 0x3Duy; 0x3Duy; 0x3Duy; 0x3Duy; 0x3Duy])
   = lemma_b32_char_roundtrip ()
 
+
 (** "fo" -> "MZXQ====". *)
 let lemma_base32_fo () : Lemma
   (ensures encode_base32 [0x66uy; 0x6Fuy] == [0x4Duy; 0x5Auy; 0x58uy; 0x51uy; 0x3Duy; 0x3Duy; 0x3Duy; 0x3Duy])
   = lemma_b32_char_roundtrip ()
+
 
 (** "foo" -> "MZXW6===". *)
 let lemma_base32_foo () : Lemma
@@ -400,17 +438,20 @@ let lemma_base32_foo () : Lemma
         == [0x4Duy; 0x5Auy; 0x58uy; 0x57uy; 0x36uy; 0x3Duy; 0x3Duy; 0x3Duy])
   = lemma_b32_char_roundtrip ()
 
+
 (** "foob" -> "MZXW6YQ=". *)
 let lemma_base32_foob () : Lemma
   (ensures encode_base32 [0x66uy; 0x6Fuy; 0x6Fuy; 0x62uy]
         == [0x4Duy; 0x5Auy; 0x58uy; 0x57uy; 0x36uy; 0x59uy; 0x51uy; 0x3Duy])
   = lemma_b32_char_roundtrip ()
 
+
 (** "fooba" -> "MZXW6YTB". *)
 let lemma_base32_fooba () : Lemma
   (ensures encode_base32 [0x66uy; 0x6Fuy; 0x6Fuy; 0x62uy; 0x61uy]
         == [0x4Duy; 0x5Auy; 0x58uy; 0x57uy; 0x36uy; 0x59uy; 0x54uy; 0x42uy])
   = lemma_b32_char_roundtrip ()
+
 
 (** "foobar" -> "MZXW6YTBOI======". *)
 let lemma_base32_foobar () : Lemma
@@ -419,10 +460,12 @@ let lemma_base32_foobar () : Lemma
             0x4Fuy; 0x49uy; 0x3Duy; 0x3Duy; 0x3Duy; 0x3Duy; 0x3Duy; 0x3Duy])
   = lemma_b32_char_roundtrip ()
 
+
 (** Decode "MY======" -> Some [0x66]. *)
 let lemma_base32_decode_f () : Lemma
   (ensures decode_base32 [0x4Duy; 0x59uy; 0x3Duy; 0x3Duy; 0x3Duy; 0x3Duy; 0x3Duy; 0x3Duy] == Some [0x66uy])
   = lemma_b32_char_roundtrip ()
+
 
 (** Decode "MZXW6YTB" -> Some [0x66; 0x6F; 0x6F; 0x62; 0x61]. *)
 let lemma_base32_decode_fooba () : Lemma
@@ -430,20 +473,24 @@ let lemma_base32_decode_fooba () : Lemma
         == Some [0x66uy; 0x6Fuy; 0x6Fuy; 0x62uy; 0x61uy])
   = lemma_b32_char_roundtrip ()
 
+
 (** Error: invalid char '1' returns None. *)
 let lemma_base32_decode_invalid_char () : Lemma
   (ensures decode_base32 [0x31uy; 0x59uy; 0x3Duy; 0x3Duy; 0x3Duy; 0x3Duy; 0x3Duy; 0x3Duy] == None)
   = ()
+
 
 (** Error: pad in first position returns None. *)
 let lemma_base32_decode_pad_first () : Lemma
   (ensures decode_base32 [0x3Duy; 0x59uy; 0x3Duy; 0x3Duy; 0x3Duy; 0x3Duy; 0x3Duy; 0x3Duy] == None)
   = ()
 
+
 (** Error: wrong-length input returns None. *)
 let lemma_base32_decode_bad_length () : Lemma
   (ensures decode_base32 [0x4Duy; 0x59uy] == None)
   = ()
+
 
 (** Roundtrip on concrete values. *)
 let lemma_base32_roundtrip_concrete () : Lemma
