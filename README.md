@@ -1,4 +1,4 @@
-# Data.BaseN Standards
+# basen — RFC 4648 base encodings
 
 Data.BaseN implements base encodings per RFC 4648.
 

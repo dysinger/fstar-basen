@@ -45,8 +45,6 @@ FSTAR_FLAGS = --no_default_includes \
 
 # Source modules in DEPENDENCY ORDER (leaf modules first).
 #
-# Data.BaseN.Pulse is the Custard-era Pulse leaf (the old KaRaMeL
-# Data.BaseN.Low was deleted with the Low* stdlib in v2026.09.20).
 SRC_MODS := Data.BaseN.Base08 Data.BaseN.Base16 Data.BaseN.Base32 \
             Data.BaseN.Base64 Data.BaseN Data.BaseN.Pulse
 
