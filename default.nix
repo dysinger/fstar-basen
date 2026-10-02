@@ -1,7 +1,7 @@
 # Copyright 2026 Department of Code LLC.
 # SPDX-License-Identifier: AGPL-3.0-or-later
 
-# fstar-basen — Data.BaseN verified base-N codec library.
+# basen — Data.BaseN verified base-N codec library.
 #
 # Takes the F* toolchain as concrete derivations (no `pkgs` blob, no overlay
 # assumption, no module-name/order arguments).  Module names and their
@@ -37,7 +37,7 @@
 let
   inherit (stdenv) mkDerivation;
 
-  # Package name.  The repo/flake are "fstar-basen", but the internal
+  # Package name.  The package is "basen" (git repo "fstar-basen"), but the internal
   # derivation/artifact names drop the "fstar-" prefix.
   pname = "basen";
 
