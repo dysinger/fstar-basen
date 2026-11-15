@@ -11,7 +11,7 @@
     fstar = {
       # Fork of F* with the LSP server ported onto the v2026.09.20 base
       # (first stable tag shipping the Custard extractor).
-      url = "github:dysinger/fstar/v2026.09.20+lsp";
+      url = "github:dysinger/fstar/v2026.10.25+lsp";
       flake = false;
     };
     # The codec dependency (Data.Codec.Types).  Consumed from the published
@@ -58,7 +58,7 @@
               let
                 ocamlPackages = prev.ocaml-ng.ocamlPackages_5_3;
                 z3 = prev.callPackage (inputs.fstar + "/.nix/z3.nix") { };
-                version = "2026.09.20+lsp";
+                version = "2026.10.25+lsp";
 
                 fstar =
                   (ocamlPackages.callPackage (inputs.fstar + "/.nix/fstar.nix") {
