@@ -9,9 +9,16 @@
     flake-utils.url = "github:numtide/flake-utils";
     treefmt-nix.url = "github:numtide/treefmt-nix";
     fstar = {
-      # Fork of F* with the LSP server ported onto the v2026.09.20 base
-      # (first stable tag shipping the Custard extractor).
-      url = "github:dysinger/fstar/v2026.10.25+lsp";
+      # Fork of F* with the LSP server ported onto the v2026.11.15 base
+      # (stable tag shipping the Custard extractor and Z3 5.3.0).
+      url = "github:dysinger/fstar/v2026.11.15+lsp";
+      flake = false;
+    };
+    # F* >= v2026.11.15 vendors mimalloc into ulib/c/mimalloc for the Cherry C
+    # backend, so .nix/fstar.nix requires this source argument.  Same tag the
+    # fstar flake itself pins.
+    mimalloc-src = {
+      url = "github:microsoft/mimalloc/v3.6.1";
       flake = false;
     };
     # The codec dependency (Data.Codec.Types).  Consumed from the published
@@ -58,12 +65,13 @@
               let
                 ocamlPackages = prev.ocaml-ng.ocamlPackages_5_3;
                 z3 = prev.callPackage (inputs.fstar + "/.nix/z3.nix") { };
-                version = "2026.10.25+lsp";
+                version = "2026.11.15+lsp";
 
                 fstar =
                   (ocamlPackages.callPackage (inputs.fstar + "/.nix/fstar.nix") {
                     inherit version z3;
                     karamel-src = prev.emptyDirectory;
+                    inherit (inputs) mimalloc-src;
                     karamelOcamlDeps = [ ];
                     ocamlLibraryPath = "";
                   }).overrideAttrs
